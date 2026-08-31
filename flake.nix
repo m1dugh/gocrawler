@@ -1,64 +1,52 @@
 {
-    description = "A page crawler written in go.";
+  description = "gocrawler - a web crawler in golang";
 
-    inputs = {
-        flake-compat = {
-            url = "github:edolstra/flake-compat";
-            flake = false;
-        };
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    systems.url = "github:nix-systems/default";
+    flake-utils = {
+      url = "github:numtide/flake-utils";
+      inputs.systems.follows = "systems";
     };
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
 
-    outputs = {
-        self,
-        nixpkgs,
-        ...
+  outputs =
+    {
+      nixpkgs,
+      flake-utils,
+      treefmt-nix,
+      ...
     }:
-    let 
-        inherit (nixpkgs) lib;
-        supportedSystems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin" ];
-        forAllSystems = lib.genAttrs supportedSystems;
-        nixpkgsFor = forAllSystems(system: import nixpkgs {
-            inherit system;
-            configure.AllowUnfree = true;
-        });
-    in {
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = import nixpkgs { inherit system; };
 
-        packages = forAllSystems(system: 
-        let
-            pkgs = nixpkgsFor.${system};
-        in {
-            gocrawler = {
-                pname = "gocrawler";
-                version = "1.5.1";
-                src = lib.cleanSource ./.;
-                vendorSha256 = "sha256-cPOZ+95ajSi5AJL9aTegtI/7dre0nRB52v2pY6HD0P0=";
-            };
+        treefmtEval = treefmt-nix.lib.evalModule pkgs {
+          projectRootFile = "flake.nix";
 
-            default = self.packages.${system}.gocrawler;
-        });
+          programs.nixfmt.enable = true;
+          programs.gofmt.enable = true;
 
-        apps = forAllSystems(system: 
-        let
-            packages = self.packages.${system};
-        in {
-            gocrawler = {
-                type = "app";
-                program = "${packages.default}/bin/gocrawler";
-            };
+          settings.global.excludes = [
+            "*.lock"
+          ];
+        };
+      in
+      {
+        formatter = treefmtEval.config.build.wrapper;
 
-            default = self.apps.${system}.gocrawler;
-        });
-
-        devShells = forAllSystems(system: 
-        let
-            pkgs = nixpkgsFor.${system};
-        in {
-            default = pkgs.mkShell {
-                nativeBuildInputs = with pkgs; [
-                    gnumake
-                    go
-                ];
-            };
-        });
-    };
+        devShells.default = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            go
+            gopls
+            goreleaser
+          ];
+        };
+      }
+    );
 }
