@@ -187,3 +187,7 @@ This project should follow a classic golang project architecture :
 
 It should follow clean code architecture with proper separation of concerns
 to allow easier refactoring as the project advances.
+
+## General guidelines
+
+Dont include claude model as co-author in **any commit**.
