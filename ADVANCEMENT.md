@@ -1,30 +1,22 @@
 # Advancement
 
-Tracks progress against the feature/architecture list in `CLAUDE.md`.
+## Done
 
-## Features
+- URL de-duplication and visited-state tracking (including detection of
+  parametrized/injectable urls via content-hash diffing)
+- Scope matching (include/exclude regex rules)
+- Crawl queue (scope-validated, thread-safe)
 
-- [ ] Basic crawling (plain HTTP client, no JS rendering)
-- [ ] Browser based crawling (remote websocket chrome/chromium)
-- [ ] Browser based crawling (locally spawned chrome/chromium)
+## In progress
 
-## Methodology components
+- Nothing currently being worked on.
 
-- [x] Queue (`internal/crawler/queue`): linked list + scope, `Length()`/`Pop()`/`Push()`, mutex-protected, error-returning API
-- [x] URL visit-state tracking (`internal/crawler/urlstate`): path/query split, `unvisited` / `visited once` / `visited` / `visited_parametrized` states, `Store.ShouldCrawl` (pre-fetch) / `Store.RecordVisit` (post-fetch)
-- [x] Scope (`internal/crawler/scope`): regex file, `!` inversion, prefix match, `IsInScope(url) bool`; errors on zero include rules
-- [ ] Crawl engine interface (strategy pattern, `Fetch(url) (content, status)`)
-- [ ] Worker pool orchestration (main thread, n crawl workers, 1 result worker)
-- [ ] Result processing / output (file, stdout, other configured outputs)
+## Remaining
 
-## Tooling
-
-- [ ] CI publishing via goreleaser
-- [ ] Nix package + dev shell in `flake.nix`
-
-## Notes
-
-- `go.mod` initialized: module `github.com/m1dugh/gocrawler`.
-- `internal/crawler/urlstate` has unit + concurrency tests (`go test ./internal/crawler/urlstate/... -race`).
-- `internal/crawler/scope` has unit tests (`go test ./internal/crawler/scope/... -race`). Combination rule: in scope if any include regex matches as a prefix AND no exclude regex matches; a scope with zero include rules returns `ErrNoIncludeRules` rather than defaulting to allow-all (avoids unbounded crawling).
-- `internal/crawler/queue` has unit + concurrency tests (`go test ./internal/crawler/queue/... -race`). Operates on raw `string` urls (matching `Scope.IsInScope(url string) bool`). `Pop()` returns `ErrEmpty` on an empty queue; `Push()` returns `ErrOutOfScope` without enqueuing when the url doesn't match scope.
+- Basic (HTTP) crawling engine
+- Browser-based crawling engine (remote and locally-spawned chrome/chromium)
+- Crawl engine strategy abstraction
+- Worker pool orchestration
+- Result processing / output
+- CI publishing via goreleaser
+- Nix package + dev shell

@@ -4,7 +4,18 @@ This project is a web crawler in golang.
 
 ## Features
 
-The current advancement should be fully marked in ADVANCEMENT.md
+**IMPORTANT: every functional advancement or technical refactor MUST be
+marked in ADVANCEMENT.md as it happens.** Minor changes (small fixes,
+tweaks, non-structural edits) do not need to be marked. A functional
+advancement is a capability the project now has (e.g. "the crawl queue
+is implemented", "scope matching is implemented") — record that it
+exists, not how it was implemented (no package paths, method
+signatures, error names, or test commands). ADVANCEMENT.md should
+reflect the global advancement of the project from a functional point
+of view, or note significant technical refactors — not a technical
+changelog of everything that has been done. It should mark what is
+currently being worked on and what remains, not implementation details
+about work already completed.
 
 ### Basic crawling
 
