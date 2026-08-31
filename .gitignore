@@ -5,3 +5,7 @@ vendor/
 
 # nix build files
 result
+
+# coverage files
+coverage.out
+coverage.html
