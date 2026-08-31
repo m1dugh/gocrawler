@@ -10,7 +10,7 @@ Tracks progress against the feature/architecture list in `CLAUDE.md`.
 
 ## Methodology components
 
-- [ ] Queue (linked list + scope, `Length()`/`Pop()`/`Push()`, mutex-protected)
+- [x] Queue (`internal/crawler/queue`): linked list + scope, `Length()`/`Pop()`/`Push()`, mutex-protected, error-returning API
 - [x] URL visit-state tracking (`internal/crawler/urlstate`): path/query split, `unvisited` / `visited once` / `visited` / `visited_parametrized` states, `Store.ShouldCrawl` (pre-fetch) / `Store.RecordVisit` (post-fetch)
 - [x] Scope (`internal/crawler/scope`): regex file, `!` inversion, prefix match, `IsInScope(url) bool`; errors on zero include rules
 - [ ] Crawl engine interface (strategy pattern, `Fetch(url) (content, status)`)
@@ -27,3 +27,4 @@ Tracks progress against the feature/architecture list in `CLAUDE.md`.
 - `go.mod` initialized: module `github.com/m1dugh/gocrawler`.
 - `internal/crawler/urlstate` has unit + concurrency tests (`go test ./internal/crawler/urlstate/... -race`).
 - `internal/crawler/scope` has unit tests (`go test ./internal/crawler/scope/... -race`). Combination rule: in scope if any include regex matches as a prefix AND no exclude regex matches; a scope with zero include rules returns `ErrNoIncludeRules` rather than defaulting to allow-all (avoids unbounded crawling).
+- `internal/crawler/queue` has unit + concurrency tests (`go test ./internal/crawler/queue/... -race`). Operates on raw `string` urls (matching `Scope.IsInScope(url string) bool`). `Pop()` returns `ErrEmpty` on an empty queue; `Push()` returns `ErrOutOfScope` without enqueuing when the url doesn't match scope.
