@@ -76,6 +76,39 @@ main thread orchestrates worker threads based on queue and result thread
 |--> 1 worker thread in charge of results/output
 ```
 
+### Result transformation pipeline
+
+The result-processing go routine turns a raw crawl result into an
+output-ready record through a **transform pipeline**: an ordered sequence
+of transformer steps, each contributing one field.
+
+- Each transformer step has a unique string identifier and a function
+  that takes the raw crawl result and the record accumulated by previous
+  steps, and returns an arbitrary value (`interface{}`) for this step.
+- The pipeline runs the steps in order, storing each step's result in the
+  output record under its own identifier. The result is a map from
+  transformer identifier to the value it produced, not a fixed struct.
+- Because each step receives what earlier steps have already produced,
+  later steps can build on earlier ones (e.g. a step could reuse a field
+  another step already computed instead of recomputing it).
+- Built-in transformer steps are small and single-purpose (one per
+  output field, e.g. full url, partial url, content hash, http status,
+  content length, timestamp), each reading straight from the raw crawl
+  result rather than from a bundled intermediate object.
+- The pipeline is assembled through a builder: steps are added one at a
+  time, in order, then built into a runnable pipeline. The crawler's
+  configuration module will eventually drive this builder to assemble
+  the pipeline from config (not yet implemented), so the set and order
+  of steps is driven by config rather than hardcoded.
+
+**Goal: custom transformers as Go plugins.** The transformer pipeline is
+designed so that anyone can eventually write and load their own custom
+transformer as a Go plugin (`plugin` package `.so`), registering it under
+its own identifier so it participates in the pipeline like any built-in
+step. This is an end-goal driving the current interface design (transform
+package lives in `pkg/`, per the plugin-extensibility rule below) —
+the actual plugin loading/discovery mechanism is not implemented yet.
+
 ### Configuration of the queue
 
 The queue must be a linked list of urls and contain a scope.
@@ -205,6 +238,12 @@ implement it. Concrete implementations of such interfaces live under
 `internal/`, namespaced by kind, e.g. `internal/crawler/engine/<crawler-type>`
 (`internal/crawler/engine/http`, `internal/crawler/engine/browser`, ...).
 The interface itself lives at `pkg/crawler/engine`.
+
+## Documentation
+
+All usage-related documentation (how to use the crawler, its packages,
+or any of its extension points such as custom transformers) **must be
+stored in README.md**. Do not scatter usage docs elsewhere.
 
 ## General guidelines
 
