@@ -13,6 +13,13 @@
   of small single-purpose transformer steps, each contributing a field to
   the output record, with later steps able to build on earlier ones
 - Output sinks (file, stdout), with pluggable serialization formats
+- Embedded link extraction from crawled content, resolved to absolute
+  urls against the page they were found on
+- Worker pool orchestration (`cmd/gocrawler`): concurrent crawl workers
+  pulling from the queue and feeding discovered links back into it, and a
+  result-processing goroutine running each result through the transform
+  pipeline into the configured output sinks — a full working end-to-end
+  crawl from the command line
 
 ## In progress
 
@@ -21,8 +28,6 @@
 ## Remaining
 
 - Browser-based crawling engine (remote and locally-spawned chrome/chromium)
-- Worker pool orchestration
-- Wiring the result-processing goroutine (channel -> transform pipeline -> sinks)
 - Driving the transform pipeline builder from the crawler's configuration
 - Loading custom transformers as Go plugins, so anyone can extend the
   transform pipeline with their own steps without modifying this project

@@ -6,6 +6,35 @@ configurable result transformation pipeline.
 
 See `ADVANCEMENT.md` for the current project status.
 
+## Usage
+
+Build and run the crawler with a scope file and one or more seed urls:
+
+```sh
+go run ./cmd/gocrawler -scope scope.txt https://example.com/
+```
+
+Flags:
+
+- `-scope <file>` (required): path to a scope rules file. Each line is a
+  regex matched as a prefix against candidate urls; a line prefixed with
+  `!` excludes matching urls instead of including them.
+- `-out <file>` (optional): also append output records to this file, in
+  addition to stdout.
+- `-workers N` (optional, default `4`): number of concurrent crawl
+  workers.
+
+Example scope file allowing only `example.com`:
+
+```
+^https://example\.com/
+```
+
+Each crawled page is written as one JSON object per line (to stdout, and
+to `-out` if given), with fields produced by the transform pipeline
+(`full_url`, `partial_url`, `content_hash`, `status`, `content_length`,
+`timestamp`, ...).
+
 ## Custom Transforms
 
 Crawl results go through a transform pipeline before being written to an
