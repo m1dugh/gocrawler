@@ -6,6 +6,9 @@
   parametrized/injectable urls via content-hash diffing)
 - Scope matching (include/exclude regex rules)
 - Crawl queue (scope-validated, thread-safe)
+- Crawl engine strategy abstraction (interface that basic and
+  browser-based engines will implement)
+- Basic (HTTP) crawling engine, with support for custom request headers
 
 ## In progress
 
@@ -13,9 +16,7 @@
 
 ## Remaining
 
-- Basic (HTTP) crawling engine
 - Browser-based crawling engine (remote and locally-spawned chrome/chromium)
-- Crawl engine strategy abstraction
 - Worker pool orchestration
 - Result processing / output
 - CI publishing via goreleaser

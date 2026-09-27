@@ -199,6 +199,13 @@ This project should follow a classic golang project architecture :
 It should follow clean code architecture with proper separation of concerns
 to allow easier refactoring as the project advances.
 
+Any interface that could at some point be extended by plugins (e.g. the
+crawl engine strategy interface) MUST live in `pkg/`, so external code can
+implement it. Concrete implementations of such interfaces live under
+`internal/`, namespaced by kind, e.g. `internal/crawler/engine/<crawler-type>`
+(`internal/crawler/engine/http`, `internal/crawler/engine/browser`, ...).
+The interface itself lives at `pkg/crawler/engine`.
+
 ## General guidelines
 
 Dont include claude model as co-author in **any commit**.
