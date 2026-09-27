@@ -35,6 +35,47 @@ to `-out` if given), with fields produced by the transform pipeline
 (`full_url`, `partial_url`, `content_hash`, `status`, `content_length`,
 `timestamp`, ...).
 
+## Browser Engine
+
+Besides the plain HTTP engine used by `cmd/gocrawler`, there is a
+browser-based engine (`internal/crawler/engine/browser`) that renders
+pages in an actual chrome/chromium instance over the Chrome DevTools
+Protocol, for pages that need JS execution to produce their final
+content. It comes in two flavors, both implementing `engine.Engine`
+(`Fetch(url) (content, status, err)` plus `Close() error`):
+
+- `browser.LocalEngine` spawns a local chrome/chromium instance:
+  ```go
+  e := browser.NewLocal(browser.LocalConfig{Headless: true})
+  defer e.Close()
+  content, status, err := e.Fetch("https://example.com/")
+  ```
+- `browser.RemoteEngine` connects to an already-running instance over its
+  remote debugging websocket url:
+  ```go
+  e, err := browser.NewRemote(browser.RemoteConfig{
+      WebsocketURL: "http://127.0.0.1:9222",
+  })
+  if err != nil {
+      // handle error
+  }
+  defer e.Close()
+  content, status, err := e.Fetch("https://example.com/")
+  ```
+
+Whenever you spawn chrome/chromium yourself (for `RemoteEngine`, or for
+manual testing), always pass `--password-store=basic`. Without it chrome
+tries to reach the gnome keyring for credential storage, which fails or
+hangs in headless/sandboxed environments:
+
+```sh
+chromium --headless --remote-debugging-port=9222 \
+  --remote-debugging-address=127.0.0.1 --password-store=basic
+```
+
+Not yet wired into `cmd/gocrawler`'s CLI (HTTP-only for now) — see
+`ADVANCEMENT.md`.
+
 ## Custom Transforms
 
 Crawl results go through a transform pipeline before being written to an

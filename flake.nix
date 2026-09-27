@@ -45,6 +45,7 @@
             go
             gopls
             goreleaser
+            chromium
           ];
         };
       }

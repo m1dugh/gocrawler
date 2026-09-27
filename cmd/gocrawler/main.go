@@ -54,10 +54,13 @@ func main() {
 		sinks = append(sinks, fileSink)
 	}
 
+	eng := httpengine.New(httpengine.Config{})
+	defer eng.Close()
+
 	cfg := Config{
 		Queue:    q,
 		Store:    urlstate.NewStore(),
-		Engine:   httpengine.New(httpengine.Config{}),
+		Engine:   eng,
 		Pipeline: defaultPipeline(),
 		Sinks:    sinks,
 		Workers:  *workers,

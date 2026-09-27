@@ -60,3 +60,8 @@ func (e *Engine) Fetch(url string) (content string, status int, err error) {
 
 	return string(body), resp.StatusCode, nil
 }
+
+// Close is a no-op: Engine holds no resources that need releasing.
+func (e *Engine) Close() error {
+	return nil
+}

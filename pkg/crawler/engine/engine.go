@@ -8,4 +8,9 @@ type Engine interface {
 	// Fetch retrieves the content of url and returns it alongside the
 	// http status code corresponding to the request.
 	Fetch(url string) (content string, status int, err error)
+
+	// Close releases any resources held by the engine (e.g. a spawned
+	// browser process or an open connection). Engines that hold no such
+	// resources may implement it as a no-op.
+	Close() error
 }

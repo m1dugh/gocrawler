@@ -20,6 +20,10 @@
   result-processing goroutine running each result through the transform
   pipeline into the configured output sinks — a full working end-to-end
   crawl from the command line
+- Browser-based crawling engine: renders pages in an actual
+  google-chrome/chromium instance, either an existing one reached over a
+  websocket url or one spawned locally by the crawler, and reports the
+  rendered content and the main document's http status
 
 ## In progress
 
@@ -27,7 +31,8 @@
 
 ## Remaining
 
-- Browser-based crawling engine (remote and locally-spawned chrome/chromium)
+- Wiring the browser engine into `cmd/gocrawler` as a selectable engine
+  (currently only exercised directly, not from the CLI)
 - Driving the transform pipeline builder from the crawler's configuration
 - Loading custom transformers as Go plugins, so anyone can extend the
   transform pipeline with their own steps without modifying this project

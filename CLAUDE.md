@@ -31,6 +31,11 @@ following things to crawl :
 2. A local install of google-chrome/chromium instance that can be spawned by the
    crawler.
 
+Whenever a chrome/chromium instance is spawned (locally, for testing, or
+otherwise), always pass `--password-store=basic` as a command-line flag.
+Without it, chrome tries to use the gnome keyring for credential storage,
+which fails or hangs in headless/sandboxed environments.
+
 ## Methodology
 
 Here is the expected methodology for crawling :
