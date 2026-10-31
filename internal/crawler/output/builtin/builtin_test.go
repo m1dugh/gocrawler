@@ -30,7 +30,7 @@ func TestBuiltinSinksAndFormats(t *testing.T) {
 	if _, err := r.NewSink("file", nil); err == nil {
 		t.Error("NewSink(file) without path: expected error, got nil")
 	}
-	if got := r.Formats(); !reflect.DeepEqual(got, []string{"json"}) {
-		t.Errorf("Formats() = %v, want [json]", got)
+	if got := r.Formats(); !reflect.DeepEqual(got, []string{"json", "tsv"}) {
+		t.Errorf("Formats() = %v, want [json tsv]", got)
 	}
 }

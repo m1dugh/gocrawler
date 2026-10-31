@@ -37,6 +37,7 @@ func NewRegistry() *output.Registry {
 	}
 
 	r.RegisterSerializer("json", serialize.JSON{})
+	r.RegisterSerializer("tsv", serialize.TSV{})
 
 	r.RegisterSink(output.SinkSpec{
 		Name:        "stdout",
