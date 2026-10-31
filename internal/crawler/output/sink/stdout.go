@@ -45,3 +45,8 @@ func (s *Stdout) Write(r engine.Record) error {
 	_, err = s.w.Write(b)
 	return err
 }
+
+// Close is a no-op: standard output is not owned by the sink.
+func (s *Stdout) Close() error {
+	return nil
+}

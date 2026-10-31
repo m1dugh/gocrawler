@@ -8,10 +8,13 @@ import (
 )
 
 func TestBuilderAddBuildRunsInOrder(t *testing.T) {
-	p := pipeline.NewBuilder().
+	p, err := pipeline.NewBuilder().
 		Add(echoTransformer{id: "a", val: 1}).
 		Add(echoTransformer{id: "b", val: 2}).
 		Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
 
 	record, err := p.Run(engine.CrawlResult{})
 	if err != nil {
@@ -23,7 +26,10 @@ func TestBuilderAddBuildRunsInOrder(t *testing.T) {
 }
 
 func TestBuilderEmpty(t *testing.T) {
-	p := pipeline.NewBuilder().Build()
+	p, err := pipeline.NewBuilder().Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
 
 	record, err := p.Run(engine.CrawlResult{})
 	if err != nil {
@@ -31,5 +37,34 @@ func TestBuilderEmpty(t *testing.T) {
 	}
 	if len(record) != 0 {
 		t.Errorf("record = %+v, want empty", record)
+	}
+}
+
+func TestBuilderAcceptsRequirementProvidedEarlier(t *testing.T) {
+	_, err := pipeline.NewBuilder().
+		Add(echoTransformer{id: "a"}).
+		Add(echoTransformer{id: "b", requires: []string{"a"}}).
+		Build()
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+}
+
+func TestBuilderRejectsMissingRequirement(t *testing.T) {
+	_, err := pipeline.NewBuilder().
+		Add(echoTransformer{id: "b", requires: []string{"a"}}).
+		Build()
+	if err == nil {
+		t.Fatal("Build() with an unprovided requirement: expected error, got nil")
+	}
+}
+
+func TestBuilderRejectsRequirementProvidedLater(t *testing.T) {
+	_, err := pipeline.NewBuilder().
+		Add(echoTransformer{id: "b", requires: []string{"a"}}).
+		Add(echoTransformer{id: "a"}).
+		Build()
+	if err == nil {
+		t.Fatal("Build() with a requirement provided only by a later step: expected error, got nil")
 	}
 }

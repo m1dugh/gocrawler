@@ -9,17 +9,20 @@ import (
 	"github.com/m1dugh/gocrawler/pkg/crawler/output"
 )
 
-// echoTransformer returns a fixed value and, if seenPrev is set, also
-// records a snapshot of the accumulator it saw.
+// echoTransformer provides one field, id, holding val. It records the
+// accumulator it was given in seenPrev when set.
 type echoTransformer struct {
 	id       string
 	val      interface{}
+	requires []string
 	seenPrev *engine.Record
 }
 
-func (e echoTransformer) ID() string { return e.id }
+func (e echoTransformer) Name() string       { return e.id }
+func (e echoTransformer) Provides() []string { return []string{e.id} }
+func (e echoTransformer) Requires() []string { return e.requires }
 
-func (e echoTransformer) Transform(_ engine.CrawlResult, acc engine.Record) (interface{}, error) {
+func (e echoTransformer) Transform(_ engine.CrawlResult, acc engine.Record) (engine.Record, error) {
 	if e.seenPrev != nil {
 		snapshot := make(engine.Record, len(acc))
 		for k, v := range acc {
@@ -27,17 +30,22 @@ func (e echoTransformer) Transform(_ engine.CrawlResult, acc engine.Record) (int
 		}
 		*e.seenPrev = snapshot
 	}
-	return e.val, nil
+	return engine.Record{e.id: e.val}, nil
 }
 
 var errBoom = errors.New("boom")
 
-type erroringTransformer struct{ id string }
+type erroringTransformer struct{ echoTransformer }
 
-func (e erroringTransformer) ID() string { return e.id }
-
-func (e erroringTransformer) Transform(engine.CrawlResult, engine.Record) (interface{}, error) {
+func (erroringTransformer) Transform(engine.CrawlResult, engine.Record) (engine.Record, error) {
 	return nil, errBoom
+}
+
+// rogueTransformer returns a field it did not declare.
+type rogueTransformer struct{ echoTransformer }
+
+func (rogueTransformer) Transform(engine.CrawlResult, engine.Record) (engine.Record, error) {
+	return engine.Record{"undeclared": 1}, nil
 }
 
 func TestPipelineRunAccumulates(t *testing.T) {
@@ -50,12 +58,8 @@ func TestPipelineRunAccumulates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-
-	if record["a"] != 1 {
-		t.Errorf(`record["a"] = %v, want 1`, record["a"])
-	}
-	if record["b"] != 2 {
-		t.Errorf(`record["b"] = %v, want 2`, record["b"])
+	if record["a"] != 1 || record["b"] != 2 {
+		t.Errorf("record = %+v, want a=1 b=2", record)
 	}
 }
 
@@ -69,7 +73,6 @@ func TestPipelineStepSeesPriorAccumulator(t *testing.T) {
 	if _, err := p.Run(engine.CrawlResult{}); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-
 	if seen["a"] != 1 {
 		t.Errorf(`step "b" saw acc["a"] = %v, want 1`, seen["a"])
 	}
@@ -79,9 +82,29 @@ func TestPipelineStepSeesPriorAccumulator(t *testing.T) {
 }
 
 func TestPipelineRunPropagatesError(t *testing.T) {
-	p := pipeline.New([]output.Transformer{erroringTransformer{id: "a"}})
+	p := pipeline.New([]output.Transformer{erroringTransformer{echoTransformer{id: "a"}}})
+
+	if _, err := p.Run(engine.CrawlResult{}); !errors.Is(err, errBoom) {
+		t.Fatalf("Run() error = %v, want it to wrap errBoom", err)
+	}
+}
+
+func TestPipelineRejectsUndeclaredField(t *testing.T) {
+	p := pipeline.New([]output.Transformer{rogueTransformer{echoTransformer{id: "a"}}})
 
 	if _, err := p.Run(engine.CrawlResult{}); err == nil {
-		t.Fatal("Run() with erroring transformer: expected error, got nil")
+		t.Fatal("Run() with a transformer returning an undeclared field: expected error, got nil")
+	}
+}
+
+func TestPipelineProvided(t *testing.T) {
+	p := pipeline.New([]output.Transformer{
+		echoTransformer{id: "a"},
+		echoTransformer{id: "b"},
+	})
+
+	got := p.Provided()
+	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Errorf("Provided() = %v, want [a b]", got)
 	}
 }

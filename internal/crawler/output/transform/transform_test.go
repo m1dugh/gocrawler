@@ -7,103 +7,63 @@ import (
 	"github.com/m1dugh/gocrawler/internal/crawler/hash"
 	"github.com/m1dugh/gocrawler/internal/crawler/output/transform"
 	"github.com/m1dugh/gocrawler/pkg/crawler/engine"
+	"github.com/m1dugh/gocrawler/pkg/crawler/output"
 )
 
-func TestFullURL(t *testing.T) {
-	r := engine.CrawlResult{URL: "https://example.com/path?q=1"}
+var ts = time.Unix(1000, 0)
 
-	fu := transform.FullURL{}
+func TestTransformers(t *testing.T) {
+	r := engine.CrawlResult{
+		URL:       "https://example.com/path?q=1",
+		Content:   "hello world",
+		Status:    404,
+		Timestamp: ts,
+	}
 
-	v, err := fu.Transform(r, engine.Record{})
-	if err != nil {
-		t.Fatalf("Transform() error = %v", err)
-	}
-	if v != r.URL {
-		t.Errorf("Transform() = %v, want %q", v, r.URL)
-	}
-	if fu.ID() != "full_url" {
-		t.Errorf("ID() = %q, want %q", fu.ID(), "full_url")
-	}
-}
-
-func TestPartialURL(t *testing.T) {
 	tests := []struct {
-		url  string
-		want string
+		name string
+		new  func() output.Transformer
+		want interface{}
 	}{
-		{"https://example.com/path?q=1", "https://example.com/path"},
-		{"https://example.com/path", "https://example.com/path"},
+		{"full_url", transform.FullURL, r.URL},
+		{"partial_url", transform.PartialURL, "https://example.com/path"},
+		{"content_hash", transform.ContentHash, hash.Content(r.Content)},
+		{"content", transform.Content, r.Content},
+		{"status", transform.Status, 404},
+		{"content_length", transform.ContentLength, len(r.Content)},
+		{"timestamp", transform.Timestamp, ts},
 	}
 
 	for _, tt := range tests {
-		v, err := transform.PartialURL{}.Transform(engine.CrawlResult{URL: tt.url}, engine.Record{})
-		if err != nil {
-			t.Fatalf("Transform() error = %v", err)
-		}
-		if v != tt.want {
-			t.Errorf("Transform(%q) = %v, want %q", tt.url, v, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			tr := tt.new()
+			if tr.Name() != tt.name {
+				t.Errorf("Name() = %q, want %q", tr.Name(), tt.name)
+			}
+			if p := tr.Provides(); len(p) != 1 || p[0] != tt.name {
+				t.Errorf("Provides() = %v, want [%s]", p, tt.name)
+			}
+			if len(tr.Requires()) != 0 {
+				t.Errorf("Requires() = %v, want none", tr.Requires())
+			}
+
+			got, err := tr.Transform(r, engine.Record{})
+			if err != nil {
+				t.Fatalf("Transform() error = %v", err)
+			}
+			if len(got) != 1 || got[tt.name] != tt.want {
+				t.Errorf("Transform() = %v, want {%s: %v}", got, tt.name, tt.want)
+			}
+		})
 	}
 }
 
-func TestContentHash(t *testing.T) {
-	r := engine.CrawlResult{Content: "hello world"}
-
-	v, err := transform.ContentHash{}.Transform(r, engine.Record{})
+func TestPartialURLWithoutQuery(t *testing.T) {
+	got, err := transform.PartialURL().Transform(engine.CrawlResult{URL: "https://example.com/path"}, engine.Record{})
 	if err != nil {
 		t.Fatalf("Transform() error = %v", err)
 	}
-	if want := hash.Content(r.Content); v != want {
-		t.Errorf("Transform() = %v, want %q", v, want)
-	}
-}
-
-func TestContent(t *testing.T) {
-	r := engine.CrawlResult{Content: "hello world"}
-
-	v, err := transform.Content{}.Transform(r, engine.Record{})
-	if err != nil {
-		t.Fatalf("Transform() error = %v", err)
-	}
-	if v != r.Content {
-		t.Errorf("Transform() = %v, want %q", v, r.Content)
-	}
-}
-
-func TestStatus(t *testing.T) {
-	r := engine.CrawlResult{Status: 404}
-
-	v, err := transform.Status{}.Transform(r, engine.Record{})
-	if err != nil {
-		t.Fatalf("Transform() error = %v", err)
-	}
-	if v != r.Status {
-		t.Errorf("Transform() = %v, want %d", v, r.Status)
-	}
-}
-
-func TestContentLength(t *testing.T) {
-	r := engine.CrawlResult{Content: "hello world"}
-
-	v, err := transform.ContentLength{}.Transform(r, engine.Record{})
-	if err != nil {
-		t.Fatalf("Transform() error = %v", err)
-	}
-	if v != len(r.Content) {
-		t.Errorf("Transform() = %v, want %d", v, len(r.Content))
-	}
-}
-
-func TestTimestamp(t *testing.T) {
-	ts := time.Unix(1000, 0)
-	r := engine.CrawlResult{Timestamp: ts}
-
-	v, err := transform.Timestamp{}.Transform(r, engine.Record{})
-	if err != nil {
-		t.Fatalf("Transform() error = %v", err)
-	}
-	got, ok := v.(time.Time)
-	if !ok || !got.Equal(ts) {
-		t.Errorf("Transform() = %v, want %v", v, ts)
+	if got["partial_url"] != "https://example.com/path" {
+		t.Errorf("Transform() = %v", got)
 	}
 }

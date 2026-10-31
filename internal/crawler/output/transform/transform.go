@@ -1,4 +1,6 @@
-// Package transform implements the built-in output.Transformer steps.
+// Package transform provides the built-in transformers of the result
+// pipeline. Each one is small and single-purpose: it provides exactly one
+// field, named after itself, and reads straight from the raw crawl result.
 package transform
 
 import (
@@ -6,85 +8,58 @@ import (
 
 	"github.com/m1dugh/gocrawler/internal/crawler/hash"
 	"github.com/m1dugh/gocrawler/pkg/crawler/engine"
+	"github.com/m1dugh/gocrawler/pkg/crawler/output"
 )
 
-// FullURL is a Transformer that contributes the full crawled url.
-type FullURL struct{}
-
-// ID returns "full_url".
-func (FullURL) ID() string { return "full_url" }
-
-// Transform returns r.URL.
-func (FullURL) Transform(r engine.CrawlResult, _ engine.Record) (interface{}, error) {
-	return r.URL, nil
+// single is a transformer providing one field computed from the raw crawl
+// result alone.
+type single struct {
+	name string
+	fn   func(engine.CrawlResult) interface{}
 }
 
-// PartialURL is a Transformer that contributes the crawled url without
-// its query string.
-type PartialURL struct{}
+func (s single) Name() string       { return s.name }
+func (s single) Provides() []string { return []string{s.name} }
+func (s single) Requires() []string { return nil }
 
-// ID returns "partial_url".
-func (PartialURL) ID() string { return "partial_url" }
-
-// Transform returns r.URL with any query string removed.
-func (PartialURL) Transform(r engine.CrawlResult, _ engine.Record) (interface{}, error) {
-	partialURL, _, _ := strings.Cut(r.URL, "?")
-	return partialURL, nil
+func (s single) Transform(r engine.CrawlResult, _ engine.Record) (engine.Record, error) {
+	return engine.Record{s.name: s.fn(r)}, nil
 }
 
-// ContentHash is a Transformer that contributes the hash of the crawled
-// content.
-type ContentHash struct{}
-
-// ID returns "content_hash".
-func (ContentHash) ID() string { return "content_hash" }
-
-// Transform returns the hash of r.Content.
-func (ContentHash) Transform(r engine.CrawlResult, _ engine.Record) (interface{}, error) {
-	return hash.Content(r.Content), nil
+// FullURL provides "full_url": the url as crawled.
+func FullURL() output.Transformer {
+	return single{"full_url", func(r engine.CrawlResult) interface{} { return r.URL }}
 }
 
-// Content is a Transformer that contributes the full crawled content.
-type Content struct{}
-
-// ID returns "content".
-func (Content) ID() string { return "content" }
-
-// Transform returns r.Content.
-func (Content) Transform(r engine.CrawlResult, _ engine.Record) (interface{}, error) {
-	return r.Content, nil
+// PartialURL provides "partial_url": the url without its query string.
+func PartialURL() output.Transformer {
+	return single{"partial_url", func(r engine.CrawlResult) interface{} {
+		partialURL, _, _ := strings.Cut(r.URL, "?")
+		return partialURL
+	}}
 }
 
-// Status is a Transformer that contributes the crawled http status code.
-type Status struct{}
-
-// ID returns "status".
-func (Status) ID() string { return "status" }
-
-// Transform returns r.Status.
-func (Status) Transform(r engine.CrawlResult, _ engine.Record) (interface{}, error) {
-	return r.Status, nil
+// ContentHash provides "content_hash": the hash of the page content.
+func ContentHash() output.Transformer {
+	return single{"content_hash", func(r engine.CrawlResult) interface{} { return hash.Content(r.Content) }}
 }
 
-// ContentLength is a Transformer that contributes the length of the
-// crawled content.
-type ContentLength struct{}
-
-// ID returns "content_length".
-func (ContentLength) ID() string { return "content_length" }
-
-// Transform returns len(r.Content).
-func (ContentLength) Transform(r engine.CrawlResult, _ engine.Record) (interface{}, error) {
-	return len(r.Content), nil
+// Content provides "content": the full page content.
+func Content() output.Transformer {
+	return single{"content", func(r engine.CrawlResult) interface{} { return r.Content }}
 }
 
-// Timestamp is a Transformer that contributes the crawl timestamp.
-type Timestamp struct{}
+// Status provides "status": the http status code.
+func Status() output.Transformer {
+	return single{"status", func(r engine.CrawlResult) interface{} { return r.Status }}
+}
 
-// ID returns "timestamp".
-func (Timestamp) ID() string { return "timestamp" }
+// ContentLength provides "content_length": the length of the content.
+func ContentLength() output.Transformer {
+	return single{"content_length", func(r engine.CrawlResult) interface{} { return len(r.Content) }}
+}
 
-// Transform returns r.Timestamp.
-func (Timestamp) Transform(r engine.CrawlResult, _ engine.Record) (interface{}, error) {
-	return r.Timestamp, nil
+// Timestamp provides "timestamp": the time the page was fetched.
+func Timestamp() output.Transformer {
+	return single{"timestamp", func(r engine.CrawlResult) interface{} { return r.Timestamp }}
 }

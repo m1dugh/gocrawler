@@ -1,32 +1,44 @@
-// Package output defines the transform pipeline and sink interfaces used
-// to turn a raw crawl result into an output-ready record and write it to
-// a destination (file, stdout, or other).
+// Package output defines the extension points of the result-processing
+// side of the crawler: transformers fill the output record, serializers
+// turn a record into bytes, and sinks deliver records somewhere. Anything
+// here can be implemented outside this module and registered in a Registry.
 package output
 
 import "github.com/m1dugh/gocrawler/pkg/crawler/engine"
 
-// Transformer is one step of the transform pipeline. It receives the raw
-// crawl result and the Record accumulated by prior steps, and returns the
-// value it contributes under its own ID.
-//
-// Transformer is the extension point for custom transform steps,
-// including ones loaded from external plugins (see ADVANCEMENT.md).
+// Transformer is one step of the transform pipeline. It reads the raw
+// crawl result, plus the record accumulated by earlier steps, and returns
+// the fields it contributes to the record.
 type Transformer interface {
-	// ID identifies this transformer's contribution in the Record.
-	ID() string
+	// Name is the unique identifier used to enable or disable the
+	// transformer.
+	Name() string
 
-	// Transform computes this step's value from the raw crawl result and
-	// whatever previous steps in the pipeline have already produced.
-	Transform(result engine.CrawlResult, acc engine.Record) (interface{}, error)
+	// Provides lists the fields Transform may return. Transform must not
+	// return a field that is not listed here.
+	Provides() []string
+
+	// Requires lists the fields Transform reads from the accumulated
+	// record. Each one must be provided by an earlier step.
+	Requires() []string
+
+	// Transform returns the fields this step contributes for result. acc
+	// holds the fields produced by earlier steps and must not be modified.
+	Transform(result engine.CrawlResult, acc engine.Record) (engine.Record, error)
 }
 
-// Serializer encodes a Record into bytes for a Sink to write, so output
-// format is swappable independently of the destination.
+// Serializer turns a Record into the bytes written by a sink.
 type Serializer interface {
 	Serialize(engine.Record) ([]byte, error)
 }
 
-// Sink writes a Record to a destination, one record per line.
+// Sink receives output records. Write may be called concurrently with
+// itself only if the implementation allows it; the crawler calls it from a
+// single goroutine.
 type Sink interface {
 	Write(engine.Record) error
+
+	// Close releases any resource held by the sink. It is called once,
+	// after the last Write.
+	Close() error
 }

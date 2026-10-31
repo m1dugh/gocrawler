@@ -1,11 +1,12 @@
 package pipeline
 
-import "github.com/m1dugh/gocrawler/pkg/crawler/output"
+import (
+	"fmt"
 
-// Builder incrementally assembles the ordered list of transformer steps
-// that make up a Pipeline. It is the API the crawler's configuration
-// module will drive to build a Pipeline from config (not yet
-// implemented): one Add call per configured transformer step, in order.
+	"github.com/m1dugh/gocrawler/pkg/crawler/output"
+)
+
+// Builder assembles a Pipeline one transformer at a time, in order.
 type Builder struct {
 	steps []output.Transformer
 }
@@ -15,17 +16,28 @@ func NewBuilder() *Builder {
 	return &Builder{}
 }
 
-// Add appends t as the next step of the pipeline being built, and
-// returns the Builder for chaining.
+// Add appends a transformer to the pipeline under construction.
 func (b *Builder) Add(t output.Transformer) *Builder {
 	b.steps = append(b.steps, t)
 	return b
 }
 
-// Build returns a Pipeline that runs the accumulated steps in the order
-// they were added.
-func (b *Builder) Build() *Pipeline {
+// Build returns the Pipeline. It fails if a transformer requires a field
+// that no earlier transformer provides.
+func (b *Builder) Build() (*Pipeline, error) {
+	provided := map[string]bool{}
+	for _, step := range b.steps {
+		for _, req := range step.Requires() {
+			if !provided[req] {
+				return nil, fmt.Errorf("transformer %q requires field %q, which no earlier transformer provides", step.Name(), req)
+			}
+		}
+		for _, f := range step.Provides() {
+			provided[f] = true
+		}
+	}
+
 	steps := make([]output.Transformer, len(b.steps))
 	copy(steps, b.steps)
-	return New(steps)
+	return New(steps), nil
 }
