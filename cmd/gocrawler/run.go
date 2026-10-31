@@ -12,12 +12,28 @@ import (
 	"github.com/m1dugh/gocrawler/internal/crawler/queue"
 	"github.com/m1dugh/gocrawler/internal/crawler/urlstate"
 	"github.com/m1dugh/gocrawler/pkg/crawler/engine"
+	"github.com/m1dugh/gocrawler/pkg/crawler/output"
 )
 
-// outputSink is the subset of output.Sink this command writes results
-// to (satisfied by both sink.File and sink.Stdout).
-type outputSink interface {
-	Write(engine.Record) error
+// SinkBinding is a sink together with the fields it writes. Empty Fields
+// means the whole record.
+type SinkBinding struct {
+	Sink   output.Sink
+	Fields []string
+}
+
+// project returns the part of record this binding writes.
+func (b SinkBinding) project(record engine.Record) engine.Record {
+	if len(b.Fields) == 0 {
+		return record
+	}
+	out := make(engine.Record, len(b.Fields))
+	for _, f := range b.Fields {
+		if v, ok := record[f]; ok {
+			out[f] = v
+		}
+	}
+	return out
 }
 
 // Config holds everything the orchestrator needs to run a crawl. All the
@@ -28,7 +44,7 @@ type Config struct {
 	Store    *urlstate.Store
 	Engine   engine.Engine
 	Pipeline *pipeline.Pipeline
-	Sinks    []outputSink
+	Sinks    []SinkBinding
 	Workers  int
 }
 
@@ -160,8 +176,8 @@ func processResults(cfg Config, results <-chan engine.CrawlResult) {
 			continue
 		}
 
-		for _, s := range cfg.Sinks {
-			if err := s.Write(record); err != nil {
+		for _, b := range cfg.Sinks {
+			if err := b.Sink.Write(b.project(record)); err != nil {
 				fmt.Fprintf(os.Stderr, "gocrawler: write output: %v\n", err)
 			}
 		}

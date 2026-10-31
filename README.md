@@ -8,170 +8,311 @@ See `ADVANCEMENT.md` for the current project status.
 
 ## Usage
 
-Build and run the crawler with a scope file and one or more seed urls:
-
 ```sh
-go run ./cmd/gocrawler -scope scope.txt https://example.com/
+gocrawler [flags] <seed-url>...
+gocrawler fields          # fields a record can hold, and which are active
+gocrawler transformers    # available transformers
+gocrawler sinks           # available sinks and their options
+gocrawler --version
 ```
 
-Flags:
+From source: `go run ./cmd/gocrawler --scope scope.txt https://example.com/`.
 
-- `-scope <file>` (required): path to a scope rules file. Each line is a
-  regex matched as a prefix against candidate urls; a line prefixed with
-  `!` excludes matching urls instead of including them.
-- `-out <file>` (optional): also append output records to this file, in
-  addition to stdout.
-- `-workers N` (optional, default `4`): number of concurrent crawl
-  workers.
+A crawl needs at least one seed url and a scope. Records go to stdout, one
+JSON object per line. Logs and errors go to stderr, so the output can be
+piped.
 
-Example scope file allowing only `example.com`:
+Long flags use `--`; the short ones are `-S`, `-H` and `-l`.
+
+| Flag | Meaning |
+|---|---|
+| `<seed-url>...` | Start urls. |
+| `-l, --seeds-file <file>` | Read seeds from a file, one per line. `-` reads stdin. |
+| `--scope <file>` | Scope rules file. |
+| `-S, --scope-rule <regex>` | Inline scope rule, repeatable. Combined with `--scope`. |
+| `--engine http\|browser` | Crawl engine. Default `http`. |
+| `--browser-url <url>` | Use an existing browser. Implies `--engine browser`. |
+| `--browser-path <path>` | Browser binary to spawn. Default: auto-detect. |
+| `--headless[=false]` | Run a spawned browser headless. Default `true`. |
+| `--browser-flag <flag>` | Extra browser flag, repeatable. |
+| `-H, --header "Name: value"` | Request header, repeatable. Works with both engines. |
+| `--timeout <duration>` | Per-fetch timeout. Default `30s`. |
+| `--workers N` | Concurrent crawl workers. Default `4`. |
+| `--transformer <name>[:key=value,...]` | Enable a transformer, repeatable. |
+| `--no-transformer <name>` | Disable a default transformer, repeatable. |
+| `--no-default-transformers` | Start from an empty pipeline. |
+| `--sink <name>[:key=value,...]` | Select a sink, repeatable. Default: stdout only. |
+| `--fields <id,id,...>` | Fields every sink writes. Default: every provided field. |
+| `--config <file>` | YAML config file. Flags override its keys. |
+
+Exit status is `0` when the crawl completed, `1` on a runtime error (an
+unreadable file, an unreachable browser) and `2` on a usage or
+configuration error (a missing scope, an unknown sink, a field no
+transformer provides).
+
+### Scope
+
+Each line of a scope file is a regex matched as a prefix against candidate
+urls. A line prefixed with `!` excludes matching urls instead of including
+them. At least one include rule is required.
 
 ```
 ^https://example\.com/
+!^https://example\.com/logout
 ```
 
-Each crawled page is written as one JSON object per line (to stdout, and
-to `-out` if given), with fields produced by the transform pipeline
-(`full_url`, `partial_url`, `content_hash`, `status`, `content_length`,
-`timestamp`, ...).
+```sh
+gocrawler --scope scope.txt https://example.com/
+gocrawler -S '^https://example\.com/' -S '!^https://example\.com/logout' https://example.com/
+```
 
-## Browser Engine
+### Engines
 
-Besides the plain HTTP engine used by `cmd/gocrawler`, there is a
-browser-based engine (`internal/crawler/engine/browser`) that renders
-pages in an actual chrome/chromium instance over the Chrome DevTools
-Protocol, for pages that need JS execution to produce their final
-content. It comes in two flavors, both implementing `engine.Engine`
-(`Fetch(url) (content, status, err)` plus `Close() error`):
+The default engine is a plain HTTP client. The browser engine renders pages
+in an actual chrome/chromium instance, for pages that need JS to produce
+their final content.
 
-- `browser.LocalEngine` spawns a local chrome/chromium instance:
-  ```go
-  e := browser.NewLocal(browser.LocalConfig{Headless: true})
-  defer e.Close()
-  content, status, err := e.Fetch("https://example.com/")
-  ```
-- `browser.RemoteEngine` connects to an already-running instance over its
-  remote debugging websocket url:
-  ```go
-  e, err := browser.NewRemote(browser.RemoteConfig{
-      WebsocketURL: "http://127.0.0.1:9222",
-  })
-  if err != nil {
-      // handle error
-  }
-  defer e.Close()
-  content, status, err := e.Fetch("https://example.com/")
-  ```
+```sh
+# spawn a local chromium
+gocrawler --engine browser --scope scope.txt https://spa.example.com/
 
-Whenever you spawn chrome/chromium yourself (for `RemoteEngine`, or for
-manual testing), always pass `--password-store=basic`. Without it chrome
-tries to reach the gnome keyring for credential storage, which fails or
-hangs in headless/sandboxed environments:
+# use an existing browser through its remote debugging endpoint
+gocrawler --browser-url http://127.0.0.1:9222 --scope scope.txt https://spa.example.com/
+
+# an endpoint behind a reverse proxy, with a header and a visible window
+gocrawler --browser-url https://browser-cdp.example.com -H 'X-Bounty: me' \
+  --scope scope.txt https://example.com/
+gocrawler --engine browser --headless=false --browser-flag --window-size=1280,800 \
+  --scope scope.txt https://example.com/
+```
+
+`--browser-url` takes the http(s) address of the debugging endpoint (the
+websocket address is looked up at `/json/version`), or directly a
+`ws://`/`wss://` address. Whenever chrome is spawned, `--password-store=basic`
+is passed, because without it chrome tries to reach the gnome keyring, which
+fails or hangs in headless/sandboxed environments. Do the same when you start
+a browser yourself:
 
 ```sh
 chromium --headless --remote-debugging-port=9222 \
   --remote-debugging-address=127.0.0.1 --password-store=basic
 ```
 
-Not yet wired into `cmd/gocrawler`'s CLI (HTTP-only for now) — see
-`ADVANCEMENT.md`.
+### Transformers
 
-## Custom Transforms
+Transformers fill the output record. Each one declares the fields it
+provides, and the fields it requires from earlier steps. Only the default
+transformers run unless you enable more.
 
-Crawl results go through a transform pipeline before being written to an
-output sink: each step is a small `output.Transformer` that contributes
-one field, keyed by its own identifier, to the final `engine.Record`.
-Built-in steps (`internal/crawler/output/transform`) read straight from
-the raw `engine.CrawlResult` — full url, partial url, content hash,
-content, http status, content length, timestamp.
+| Transformer | Provides | Default |
+|---|---|---|
+| `full_url` | `full_url`: url as crawled | yes |
+| `status` | `status`: http status code | yes |
+| `content_length` | `content_length`: length of the content | yes |
+| `partial_url` | `partial_url`: url without its query string | no |
+| `content_hash` | `content_hash`: hash of the page content | no |
+| `timestamp` | `timestamp`: time the page was fetched | no |
+| `content` | `content`: full page content | no |
 
-A custom transformer just implements `output.Transformer`:
+```sh
+gocrawler --scope scope.txt --transformer content_hash https://example.com/
+gocrawler --scope scope.txt --no-transformer content_length https://example.com/
+gocrawler --scope scope.txt --no-default-transformers \
+  --transformer full_url --transformer status https://example.com/
+```
+
+Enabled transformers run after the default ones, in the order given. A
+transformer whose required field is no longer provided makes the crawl fail
+at startup.
+
+### Sinks and fields
+
+A sink delivers records. Select one with `--sink name[:key=value,...]`,
+repeatable. With no `--sink`, records go to stdout only; selecting any sink
+replaces that default, and every record is written to each selected sink.
+Every sink accepts a `format` option: `json` (the default) or `tsv`.
+
+| Sink | Options |
+|---|---|
+| `stdout` | `format` |
+| `file` | `path` (required), `format`. Appends one record per line. |
+
+```sh
+gocrawler --scope scope.txt --sink file:path=crawl.jsonl https://example.com/
+gocrawler --scope scope.txt --sink stdout --sink file:path=crawl.jsonl https://example.com/
+```
+
+`--fields` chooses which fields the sinks write, and applies to every sink.
+Each field must be provided by an active transformer; otherwise the error
+names the transformer that provides it.
+
+```sh
+$ gocrawler --scope scope.txt --fields full_url,status https://example.com/
+{"full_url":"https://example.com/","status":200}
+
+$ gocrawler --scope scope.txt --fields content https://example.com/
+gocrawler: field "content" is provided by transformer "content", which is not enabled
+```
+
+The `tsv` format writes one line of tab-separated values per record, with no
+header. Columns follow the alphabetical order of the field names (so
+`full_url` comes before `status`), and tabs, newlines, carriage returns and
+backslashes inside a value are escaped as `\t`, `\n`, `\r` and `\\`. Times are
+written in RFC 3339, like in JSON.
+
+```sh
+$ gocrawler --scope scope.txt --sink stdout:format=tsv --fields full_url,status https://example.com/
+https://example.com/	200
+```
+
+Option values cannot contain a comma on the command line; use the config
+file for those.
+
+### Config file
+
+`--config <file>` reads a YAML file in which every key mirrors a flag. Flags
+override the file: a flag that is set replaces the same key, except seeds,
+`--transformer` and `--no-transformer`, which are added to the file's. Unknown
+keys are an error.
+
+```yaml
+seeds:
+  - https://example.com/
+scope:
+  file: scope.txt
+  rules:
+    - '!^https://example\.com/admin'
+engine: browser            # http (default) or browser
+browser:
+  url: https://browser-cdp.example.com
+  # path: /usr/bin/chromium
+  # headless: false
+  # flags: ["--window-size=1280,800"]
+headers:
+  - "Authorization: Bearer abc123"
+timeout: 15s
+workers: 8
+transformers:
+  defaults: true           # false starts from an empty pipeline
+  enable:
+    - content_hash
+    - name: word_count     # an entry is a name, or a name with options
+      options:
+        min_length: 3
+  disable:
+    - content_length
+output:
+  fields: [full_url, status, content_hash]   # for sinks without their own
+  sinks:                   # omit for the default: stdout only
+    - type: stdout
+    - type: file
+      path: crawl.jsonl
+      format: json
+      fields: [full_url, status, content_hash, word_count]
+```
+
+Fields are set per sink with the sink's own `fields`. For each sink they
+resolve in this order: the sink's own `fields`, then `output.fields`, then
+every field provided by the active transformers. The `--fields` flag
+overrides all of them and applies to every sink, and `--sink` replaces the
+file's sinks list.
+
+## Browser Engine API
+
+The browser engine (`internal/crawler/engine/browser`) renders pages over
+the Chrome DevTools Protocol. Both flavors implement `engine.Engine`
+(`Fetch(url) (content, status, err)` plus `Close() error`):
+
+```go
+// spawns a local chrome/chromium
+e := browser.NewLocal(browser.LocalConfig{
+    Headless: true,
+    Headers:  map[string][]string{"X-Bounty": {"me"}},
+})
+defer e.Close()
+content, status, err := e.Fetch("https://example.com/")
+
+// connects to a running instance (http(s):// or ws(s):// address)
+r, err := browser.NewRemote(browser.RemoteConfig{
+    WebsocketURL: "http://127.0.0.1:9222",
+})
+```
+
+## Extending the crawler
+
+Transformers, sinks and serialization formats are registered by name in an
+`output.Registry` (`pkg/crawler/output`), the way the built-in ones are.
+Anything registered can be selected from the command line and the config
+file like a built-in. Loading them from Go plugins (`.so`) is a planned goal
+and is not implemented yet, so for now they are compiled into a binary that
+builds its own registry.
+
+### Custom transformers
+
+A transformer implements `output.Transformer`:
 
 ```go
 type Transformer interface {
-    ID() string
-    Transform(result engine.CrawlResult, acc engine.Record) (interface{}, error)
+    Name() string
+    Provides() []string // fields Transform may return
+    Requires() []string // fields read from earlier steps
+    Transform(result engine.CrawlResult, acc engine.Record) (engine.Record, error)
 }
 ```
 
-`Transform` receives both the raw crawl result and the `Record`
-accumulated by prior steps in the pipeline, so a custom step can build on
-what earlier steps already produced.
-
-Example: building a pipeline of built-in steps plus a custom `word_count`
-transformer, then serializing and writing the resulting record to stdout.
+`Transform` returns the fields it contributes. `acc` holds what earlier steps
+produced, so a step can build on them as long as it declares the field in
+`Requires`. Returning a field not listed in `Provides` is an error.
 
 ```go
-package main
+type wordCount struct{ minLength int }
 
-import (
-	"fmt"
-	"time"
+func (wordCount) Name() string       { return "word_count" }
+func (wordCount) Provides() []string { return []string{"word_count"} }
+func (wordCount) Requires() []string { return nil }
 
-	"github.com/m1dugh/gocrawler/internal/crawler/output/pipeline"
-	"github.com/m1dugh/gocrawler/internal/crawler/output/serialize"
-	"github.com/m1dugh/gocrawler/internal/crawler/output/sink"
-	"github.com/m1dugh/gocrawler/internal/crawler/output/transform"
-	"github.com/m1dugh/gocrawler/pkg/crawler/engine"
-	"github.com/m1dugh/gocrawler/pkg/crawler/output"
-)
-
-// A custom transformer, the kind a plugin would eventually contribute.
-// It reads content straight from the raw CrawlResult (not from another
-// step's output) to compute a crude word count.
-type wordCount struct{}
-
-func (wordCount) ID() string { return "word_count" }
-
-func (wordCount) Transform(r engine.CrawlResult, _ engine.Record) (interface{}, error) {
-	return len(r.Content), nil
+func (w wordCount) Transform(r engine.CrawlResult, _ engine.Record) (engine.Record, error) {
+    n := 0
+    for _, word := range strings.Fields(r.Content) {
+        if len(word) >= w.minLength {
+            n++
+        }
+    }
+    return engine.Record{"word_count": n}, nil
 }
 
-var _ output.Transformer = wordCount{}
-
-func main() {
-	// The Builder is the API the crawler's config module will drive:
-	// one Add per configured step, in order, then Build() the pipeline.
-	p := pipeline.NewBuilder().
-		Add(transform.FullURL{}).
-		Add(transform.PartialURL{}).
-		Add(transform.ContentHash{}).
-		Add(transform.Content{}).
-		Add(transform.Status{}).
-		Add(transform.ContentLength{}).
-		Add(transform.Timestamp{}).
-		Add(wordCount{}).
-		Build()
-
-	result := engine.CrawlResult{
-		URL:       "https://example.com/page?id=1",
-		Content:   "hello world this is a page",
-		Status:    200,
-		Timestamp: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-	}
-
-	record, err := p.Run(result)
-	if err != nil {
-		panic(err)
-	}
-
-	ser := serialize.JSON{}
-
-	stdoutSink := sink.NewStdout(ser)
-	if err := stdoutSink.Write(record); err != nil {
-		panic(err)
-	}
-
-	fmt.Println("record keys:", len(record))
-}
+reg.RegisterTransformer(output.TransformerSpec{
+    Name:        "word_count",
+    Description: "number of words in the page",
+    Options:     []output.OptionSpec{{Name: "min_length", Description: "shortest word counted"}},
+    New: func(opts output.Options) (output.Transformer, error) {
+        return wordCount{minLength: 1}, nil // parse opts["min_length"] here
+    },
+})
 ```
 
-Output:
+Set `Default: true` in the spec to make a transformer active unless disabled.
+Unknown and missing options are rejected by the registry before `New` runs.
 
-```json
-{"content":"hello world this is a page","content_hash":"cb84dcdc0ee40e9b4ec3592ad2e3085aa98342ce9dd3bf71e3a34262ada9fa7f","content_length":26,"full_url":"https://example.com/page?id=1","partial_url":"https://example.com/page","status":200,"timestamp":"2026-01-01T00:00:00Z","word_count":26}
-record keys: 8
+### Custom sinks
+
+A sink implements `output.Sink`. It is given the serializer picked by the
+`format` option, which it can use or ignore.
+
+```go
+type printSink struct{ prefix string }
+
+func (s printSink) Write(r engine.Record) error { fmt.Println(s.prefix, r); return nil }
+func (printSink) Close() error                  { return nil }
+
+reg.RegisterSink(output.SinkSpec{
+    Name:    "print",
+    Options: []output.OptionSpec{{Name: "prefix"}},
+    New: func(opts output.Options, _ output.Serializer) (output.Sink, error) {
+        return printSink{prefix: opts["prefix"]}, nil
+    },
+})
 ```
 
-Custom transformers loaded as external Go plugins are a planned goal (see
-`ADVANCEMENT.md`) — not yet implemented.
+Then `--sink print:prefix=crawled`, or `- type: print` in the config file.
+Serialization formats are added with `reg.RegisterSerializer(name, ser)`.

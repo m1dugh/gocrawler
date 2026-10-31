@@ -8,7 +8,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/m1dugh/gocrawler/internal/crawler/config"
 	httpengine "github.com/m1dugh/gocrawler/internal/crawler/engine/http"
+	"github.com/m1dugh/gocrawler/internal/crawler/output/builtin"
+	"github.com/m1dugh/gocrawler/internal/crawler/output/pipeline"
 	"github.com/m1dugh/gocrawler/internal/crawler/queue"
 	"github.com/m1dugh/gocrawler/internal/crawler/scope"
 	"github.com/m1dugh/gocrawler/internal/crawler/urlstate"
@@ -29,6 +32,8 @@ func (s *recordingSink) Write(r engine.Record) error {
 	return nil
 }
 
+func (s *recordingSink) Close() error { return nil }
+
 func (s *recordingSink) urls(t *testing.T) []string {
 	t.Helper()
 	s.mu.Lock()
@@ -40,6 +45,16 @@ func (s *recordingSink) urls(t *testing.T) []string {
 		urls = append(urls, u)
 	}
 	return urls
+}
+
+// testPipeline builds the pipeline of default transformers.
+func testPipeline(t *testing.T) *pipeline.Pipeline {
+	t.Helper()
+	p, err := buildPipeline(config.Transformers{}, builtin.NewRegistry())
+	if err != nil {
+		t.Fatalf("buildPipeline() error = %v", err)
+	}
+	return p
 }
 
 func TestRunCrawlsLinkedPages(t *testing.T) {
@@ -72,8 +87,8 @@ func TestRunCrawlsLinkedPages(t *testing.T) {
 		Queue:    q,
 		Store:    urlstate.NewStore(),
 		Engine:   httpengine.New(httpengine.Config{}),
-		Pipeline: defaultPipeline(),
-		Sinks:    []outputSink{rec},
+		Pipeline: testPipeline(t),
+		Sinks:    []SinkBinding{{Sink: rec}},
 		Workers:  2,
 	})
 
@@ -124,8 +139,8 @@ func TestRunSkipsAlreadyVisited(t *testing.T) {
 		Queue:    q,
 		Store:    urlstate.NewStore(),
 		Engine:   httpengine.New(httpengine.Config{}),
-		Pipeline: defaultPipeline(),
-		Sinks:    []outputSink{rec},
+		Pipeline: testPipeline(t),
+		Sinks:    []SinkBinding{{Sink: rec}},
 		Workers:  2,
 	})
 
@@ -137,7 +152,7 @@ func TestRunSkipsAlreadyVisited(t *testing.T) {
 }
 
 func TestDefaultPipelineJSONRoundTrip(t *testing.T) {
-	p := defaultPipeline()
+	p := testPipeline(t)
 	result := engine.CrawlResult{URL: "https://example.com", Content: "hi", Status: 200}
 
 	record, err := p.Run(result)
@@ -146,5 +161,19 @@ func TestDefaultPipelineJSONRoundTrip(t *testing.T) {
 	}
 	if _, err := json.Marshal(record); err != nil {
 		t.Fatalf("record not JSON-serializable: %v", err)
+	}
+}
+
+func TestSinkBindingProject(t *testing.T) {
+	record := engine.Record{"full_url": "u", "status": 200, "content": "c"}
+
+	all := SinkBinding{}.project(record)
+	if len(all) != 3 {
+		t.Errorf("no fields: project() = %v, want the whole record", all)
+	}
+
+	some := SinkBinding{Fields: []string{"full_url", "status", "missing"}}.project(record)
+	if len(some) != 2 || some["full_url"] != "u" || some["status"] != 200 {
+		t.Errorf("project() = %v, want only full_url and status", some)
 	}
 }

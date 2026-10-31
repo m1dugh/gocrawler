@@ -10,9 +10,14 @@
   browser-based engines will implement)
 - Basic (HTTP) crawling engine, with support for custom request headers
 - Result transformation pipeline: an ordered, builder-assembled sequence
-  of small single-purpose transformer steps, each contributing a field to
-  the output record, with later steps able to build on earlier ones
-- Output sinks (file, stdout), with pluggable serialization formats
+  of transformers, each declaring the fields it provides and requires and
+  contributing them to the output record, with later steps able to build
+  on earlier ones. Only a small set is active by default; the others are
+  opt-in
+- Registry of transformers, sinks and serialization formats selectable by
+  name, the extension point custom ones will plug into
+- Output sinks (file, stdout), with pluggable serialization formats (JSON,
+  TSV), each record written to every selected sink
 - Embedded link extraction from crawled content, resolved to absolute
   urls against the page they were found on
 - Worker pool orchestration (`cmd/gocrawler`): concurrent crawl workers
@@ -23,7 +28,14 @@
 - Browser-based crawling engine: renders pages in an actual
   google-chrome/chromium instance, either an existing one reached over a
   websocket url or one spawned locally by the crawler, and reports the
-  rendered content and the main document's http status
+  rendered content and the main document's http status, with custom
+  request headers and extra browser flags
+- Command-line interface: seeds from arguments, a file or stdin; scope from
+  a file and inline rules; engine selection (http, local browser, remote
+  browser behind any debugging endpoint); headers, timeout and workers;
+  transformer selection; multiple sinks; and per-run field selection
+- YAML configuration file mirroring every flag, with per-sink field
+  selection, overridden by the flags
 
 ## In progress
 
@@ -31,10 +43,7 @@
 
 ## Remaining
 
-- Wiring the browser engine into `cmd/gocrawler` as a selectable engine
-  (currently only exercised directly, not from the CLI)
-- Driving the transform pipeline builder from the crawler's configuration
-- Loading custom transformers as Go plugins, so anyone can extend the
-  transform pipeline with their own steps without modifying this project
+- Loading custom transformers and sinks as Go plugins, so anyone can
+  extend the crawler without modifying this project
 - CI publishing via goreleaser
 - Nix package + dev shell
