@@ -28,7 +28,8 @@ type RemoteConfig struct {
 
 // RemoteEngine is a crawler.Engine implementation that fetches urls by
 // rendering them in an existing chrome/chromium instance, reached over a
-// websocket url.
+// websocket url. It works in a tab it opened itself, and leaves every other
+// tab of the browser alone.
 type RemoteEngine struct {
 	timeout time.Duration
 	headers map[string][]string
@@ -39,11 +40,11 @@ type RemoteEngine struct {
 // NewRemote connects to the chrome/chromium instance at cfg.WebsocketURL
 // and returns a RemoteEngine that renders pages on it.
 //
-// Some chrome/chromium builds fail to open a new tab via CDP's
-// Target.createTarget when driven this way ("Failed to open new tab -
-// no browser is open"). To work around this, NewRemote attaches to an
-// existing page target when the browser already has one, only falling
-// back to letting chromedp create a new target if none exists.
+// The browser belongs to someone else, so the engine only ever touches the
+// tab it opens itself: it never attaches to, navigates or closes a tab that
+// was already open. Fetch renders in that single tab, and Close closes it.
+// If the browser refuses to open a tab, NewRemote fails rather than falling
+// back to an existing one.
 func NewRemote(cfg RemoteConfig) (*RemoteEngine, error) {
 	wsURL, err := resolveWebsocketURL(cfg.WebsocketURL)
 	if err != nil {
@@ -51,23 +52,27 @@ func NewRemote(cfg RemoteConfig) (*RemoteEngine, error) {
 	}
 	allocCtx, allocCancel := chromedp.NewRemoteAllocator(context.Background(), wsURL, chromedp.NoModifyURL)
 
+	// Connect to the browser before creating the context that owns the tab.
+	// A context created while the browser is not connected yet considers
+	// itself the first one and adopts the browser's first existing tab,
+	// where one created afterwards opens a tab of its own. This call must
+	// stay, as it is what keeps us away from the user's tabs. Cancelling
+	// this context closes no tab.
 	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
-	targets, err := chromedp.Targets(browserCtx)
-	if err != nil {
+	if _, err := chromedp.Targets(browserCtx); err != nil {
 		browserCancel()
 		allocCancel()
 		return nil, err
 	}
 
-	var opts []chromedp.ContextOption
-	for _, t := range targets {
-		if t.Type == "page" {
-			opts = append(opts, chromedp.WithTargetID(t.TargetID))
-			break
-		}
+	// Open our tab now, so that a browser unable to do it is reported here.
+	ctx, cancel := chromedp.NewContext(browserCtx)
+	if err := chromedp.Run(ctx); err != nil {
+		cancel()
+		browserCancel()
+		allocCancel()
+		return nil, fmt.Errorf("opening a tab in the remote browser: %w", err)
 	}
-
-	ctx, cancel := chromedp.NewContext(browserCtx, opts...)
 
 	return &RemoteEngine{
 		timeout: cfg.Timeout,
@@ -93,8 +98,9 @@ func (e *RemoteEngine) Fetch(url string) (content string, status int, err error)
 	return fetch(ctx, url, e.headers)
 }
 
-// Close disconnects from the remote browser. It does not terminate the
-// remote browser process itself, only this engine's connection to it.
+// Close closes the tab the engine opened and disconnects from the remote
+// browser. It does not terminate the browser process, and it never closes any
+// other tab.
 func (e *RemoteEngine) Close() error {
 	e.cancel()
 	return nil

@@ -89,7 +89,9 @@ gocrawler --engine browser --headless=false --browser-flag --window-size=1280,80
 
 `--browser-url` takes the http(s) address of the debugging endpoint (the
 websocket address is looked up at `/json/version`), or directly a
-`ws://`/`wss://` address. Whenever chrome is spawned, `--password-store=basic`
+`ws://`/`wss://` address. With an existing browser, gocrawler works in a tab
+it opens itself and closes only that tab when it exits. It never attaches to,
+navigates or closes a tab that was already open. Whenever chrome is spawned, `--password-store=basic`
 is passed, because without it chrome tries to reach the gnome keyring, which
 fails or hangs in headless/sandboxed environments. Do the same when you start
 a browser yourself:
@@ -234,7 +236,8 @@ e := browser.NewLocal(browser.LocalConfig{
 defer e.Close()
 content, status, err := e.Fetch("https://example.com/")
 
-// connects to a running instance (http(s):// or ws(s):// address)
+// connects to a running instance (http(s):// or ws(s):// address). It
+// works in a tab of its own, and Close closes only that tab
 r, err := browser.NewRemote(browser.RemoteConfig{
     WebsocketURL: "http://127.0.0.1:9222",
 })

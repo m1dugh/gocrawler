@@ -36,6 +36,13 @@ otherwise), always pass `--password-store=basic` as a command-line flag.
 Without it, chrome tries to use the gnome keyring for credential storage,
 which fails or hangs in headless/sandboxed environments.
 
+When using an existing (remote) browser, **never close a tab that the
+crawler did not open itself.** The browser belongs to someone else: the
+crawler opens its own tab, renders every page in it, and closes only that tab
+on exit. It must never attach to, navigate or close a tab that was already
+open, and when the browser refuses to open a tab it fails instead of falling
+back to an existing one.
+
 ## Methodology
 
 Here is the expected methodology for crawling :
