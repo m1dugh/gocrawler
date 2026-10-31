@@ -36,6 +36,10 @@
   transformer selection; multiple sinks; and per-run field selection
 - YAML configuration file mirroring every flag, with per-sink field
   selection, overridden by the flags
+- Container image: a multi-stage Alpine build that cross-compiles the
+  binary, so one Dockerfile serves both amd64 and arm64. The image bundles
+  no browser, to stay small: the browser engine is used from it only with
+  an existing browser
 
 ## In progress
 
@@ -46,4 +50,5 @@
 - Loading custom transformers and sinks as Go plugins, so anyone can
   extend the crawler without modifying this project
 - CI publishing via goreleaser
+- CI building and publishing the multi-arch container image
 - Nix package + dev shell

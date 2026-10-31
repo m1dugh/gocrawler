@@ -227,6 +227,27 @@ This project is built using golang.
 
 In CI, the package should be published using goreleaser
 
+### Docker
+
+The project ships a multi-stage Alpine `Dockerfile`, architecture agnostic:
+the same file is built for both `linux/amd64` and `linux/arm64` (the
+multi-arch build itself is done by CI).
+
+**The image never contains chrome/chromium, and the built-in (locally
+spawned) browser MUST NOT be used when running from the docker image.** This
+is an architectural choice to keep the image low in size. It might be
+subject to change. Consequences:
+
+- Do not install a browser in the `Dockerfile`, and do not add a build
+  argument or option to do so.
+- Do not document or demonstrate spawning a local browser from the image.
+- Browser based crawling from the image is only done through an existing
+  browser reached with `--browser-url` (the "existing instance provided
+  through a websocket url" mode above).
+
+If this choice changes, update this section, the `Dockerfile` and the Docker
+section of README.md together.
+
 ### Nix
 
 This project should also be packaged in a nix package in the @flake.nix

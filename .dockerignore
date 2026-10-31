@@ -1,0 +1,15 @@
+.git
+.gitignore
+.dockerignore
+Dockerfile
+
+# build and coverage output
+dist/
+result
+coverage.out
+coverage.html
+
+# the nix files and the docs are not needed to build the binary
+flake.nix
+flake.lock
+*.md

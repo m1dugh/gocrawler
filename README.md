@@ -74,7 +74,7 @@ in an actual chrome/chromium instance, for pages that need JS to produce
 their final content.
 
 ```sh
-# spawn a local chromium
+# spawn a local chromium (not from the docker image, see "Docker")
 gocrawler --engine browser --scope scope.txt https://spa.example.com/
 
 # use an existing browser through its remote debugging endpoint
@@ -220,6 +220,61 @@ resolve in this order: the sink's own `fields`, then `output.fields`, then
 every field provided by the active transformers. The `--fields` flag
 overrides all of them and applies to every sink, and `--sink` replaces the
 file's sinks list.
+
+## Docker
+
+The `Dockerfile` builds a small Alpine image, in two stages. The Go binary is
+cross-compiled on the build machine for the target platform, so the same
+file builds `linux/amd64` and `linux/arm64` images without emulating the
+compiler.
+
+```sh
+# for the local platform
+docker build -t gocrawler .
+
+# for both platforms (needs buildx; running the Alpine steps of the other
+# platform needs qemu emulation, which CI sets up)
+docker buildx build --platform linux/amd64,linux/arm64 -t gocrawler .
+```
+
+The image runs as a non-root user, and its working directory is `/work`.
+Mount the directory holding your scope file, and where output goes:
+
+```sh
+docker run --rm -v "$PWD:/work" gocrawler \
+  --scope scope.txt --sink file:path=crawl.jsonl https://example.com/
+```
+
+Build arguments:
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `VERSION` | `dev` | Version reported by `gocrawler --version`. |
+| `GO_VERSION` | `1.26` | Go version of the build stage. |
+| `ALPINE_VERSION` | `3` | Alpine version of the final image. |
+
+### Browser engine in the image
+
+> [!IMPORTANT]
+> **The image contains no browser, and the built-in browser must never be
+> used when running from it.** Do not use `--engine browser` without
+> `--browser-url` in the image: no chrome/chromium binary is installed, so a
+> locally spawned browser cannot start.
+
+Leaving the browser out is an architectural choice, made to keep the image
+low in size. It might be subject to change.
+
+From the image, the browser engine is only used with an existing browser,
+reached with `--browser-url` (for example one running on the host, or in
+another container):
+
+```sh
+docker run --rm -v "$PWD:/work" gocrawler \
+  --browser-url http://host.docker.internal:9222 \
+  --scope scope.txt https://spa.example.com/
+```
+
+The plain HTTP engine, the default, works from the image as is.
 
 ## Browser Engine API
 
