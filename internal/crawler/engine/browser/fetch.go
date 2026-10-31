@@ -9,6 +9,7 @@ package browser
 
 import (
 	"context"
+	"strings"
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
@@ -18,7 +19,7 @@ import (
 // chromedp context created by either RemoteEngine or LocalEngine),
 // returning the rendered page's html content and the http status of its
 // main document response.
-func fetch(ctx context.Context, url string) (content string, status int, err error) {
+func fetch(ctx context.Context, url string, headers map[string][]string) (content string, status int, err error) {
 	var statusCode int64
 
 	// The main document's response is the last Document-typed response
@@ -36,6 +37,7 @@ func fetch(ctx context.Context, url string) (content string, status int, err err
 
 	err = chromedp.Run(ctx,
 		network.Enable(),
+		network.SetExtraHTTPHeaders(extraHeaders(headers)),
 		chromedp.Navigate(url),
 		chromedp.OuterHTML("html", &content, chromedp.ByQuery),
 	)
@@ -44,4 +46,14 @@ func fetch(ctx context.Context, url string) (content string, status int, err err
 	}
 
 	return content, int(statusCode), nil
+}
+
+// extraHeaders converts headers to the form the DevTools protocol takes,
+// joining repeated values of a header with ", ".
+func extraHeaders(headers map[string][]string) network.Headers {
+	h := network.Headers{}
+	for name, values := range headers {
+		h[name] = strings.Join(values, ", ")
+	}
+	return h
 }
