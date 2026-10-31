@@ -11,9 +11,10 @@ See `ADVANCEMENT.md` for the current project status.
 ```sh
 gocrawler [flags] <seed-url>...
 gocrawler fields          # fields a record can hold, and which are active
+                          # (takes --config and the transformer flags)
 gocrawler transformers    # available transformers
 gocrawler sinks           # available sinks and their options
-gocrawler --version
+gocrawler --version          # or -v
 ```
 
 From source: `go run ./cmd/gocrawler --scope scope.txt https://example.com/`.
@@ -196,7 +197,8 @@ transformers:
   defaults: true           # false starts from an empty pipeline
   enable:
     - content_hash
-    - name: word_count     # an entry is a name, or a name with options
+    - name: word_count     # a name with options; a custom transformer, see
+                           # "Extending the crawler" (remove it to run as is)
       options:
         min_length: 3
   disable:
@@ -208,7 +210,7 @@ output:
     - type: file
       path: crawl.jsonl
       format: json
-      fields: [full_url, status, content_hash, word_count]
+      fields: [full_url, status, content_hash, word_count]   # drop word_count too
 ```
 
 Fields are set per sink with the sink's own `fields`. For each sink they
