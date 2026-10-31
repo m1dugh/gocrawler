@@ -197,8 +197,8 @@ transformers:
   defaults: true           # false starts from an empty pipeline
   enable:
     - content_hash
-    - name: word_count     # a name with options; a custom transformer, see
-                           # "Extending the crawler" (remove it to run as is)
+    - name: word_count     # a name with options. NOT AVAILABLE: custom
+                           # transformers are planned, remove it to run as is
       options:
         min_length: 3
   disable:
@@ -242,12 +242,23 @@ r, err := browser.NewRemote(browser.RemoteConfig{
 
 ## Extending the crawler
 
+> [!WARNING]
+> ## THIS FEATURE IS NOT AVAILABLE YET. IT IS PLANNED.
+>
+> **You cannot extend the `gocrawler` binary with your own transformers,
+> sinks or formats today.** There is no `--plugin` flag, and nothing is loaded
+> from Go plugins (`.so` files). Loading them is a planned goal, not an
+> implemented feature.
+>
+> What exists is the registry API described below, which a future plugin
+> loader will use. It is only usable by writing your own Go program that
+> imports this module and builds its own registry. The examples in this
+> section show that API and are not a supported way to extend the released
+> binary.
+
 Transformers, sinks and serialization formats are registered by name in an
 `output.Registry` (`pkg/crawler/output`), the way the built-in ones are.
-Anything registered can be selected from the command line and the config
-file like a built-in. Loading them from Go plugins (`.so`) is a planned goal
-and is not implemented yet, so for now they are compiled into a binary that
-builds its own registry.
+Anything registered in a registry can be selected by name, like a built-in.
 
 ### Custom transformers
 
@@ -316,5 +327,8 @@ reg.RegisterSink(output.SinkSpec{
 })
 ```
 
-Then `--sink print:prefix=crawled`, or `- type: print` in the config file.
+Once registered in a registry, it is selected by name, for example
+`--sink print:prefix=crawled` or `- type: print` in the config file. This only
+works in a program that builds its own registry: the released `gocrawler`
+binary cannot load it yet (see the warning at the top of this section).
 Serialization formats are added with `reg.RegisterSerializer(name, ser)`.
